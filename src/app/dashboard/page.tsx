@@ -34,6 +34,25 @@ function moeda(v: number) {
   return (v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+// Converte o campo "mes" da view para um rótulo legível no gráfico.
+// Aceita:
+// - "2025-02" (string)
+// - "2025-02-01" (string)
+// - Date / timestamp
+function formatMesLabel(mes: any) {
+  if (!mes) return "";
+
+  // Se vier "YYYY-MM", transforma em "YYYY-MM-01" para o Date não ficar inválido
+  if (typeof mes === "string" && /^\d{4}-\d{2}$/.test(mes)) {
+    mes = `${mes}-01`;
+  }
+
+  const d = new Date(mes);
+  if (Number.isNaN(d.getTime())) return String(mes);
+
+  return d.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
+}
+
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [projetos, setProjetos] = useState<ResumoProjeto[]>([]);
@@ -84,16 +103,17 @@ export default function DashboardPage() {
     [projetos, projetoId]
   );
 
-  // 2) PASSO 2.3 (EXATO): quando mudar o projeto, carregar mensal + categorias
+  // 2) quando mudar o projeto, carregar mensal + categorias
   useEffect(() => {
     async function loadMensal() {
       if (!projetoId) return;
 
       setLoadingMensal(true);
 
+      // ✅ VIEW tem colunas: mes, entradas, saidas
       const { data, error } = await supabase
         .from("vw_executado_por_mes")
-        .select("mes,total_entradas,total_saidas")
+        .select("mes,entradas,saidas")
         .eq("projeto_id", projetoId)
         .order("mes", { ascending: true });
 
@@ -105,9 +125,9 @@ export default function DashboardPage() {
       }
 
       const rows: MensalRow[] = (data ?? []).map((r: any) => ({
-        mes: new Date(r.mes).toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }),
-        entradas: Number(r.total_entradas ?? 0),
-        saidas: Number(r.total_saidas ?? 0),
+        mes: formatMesLabel(r.mes),
+        entradas: Number(r.entradas ?? 0),
+        saidas: Number(r.saidas ?? 0),
       }));
 
       setMensal(rows);
@@ -187,7 +207,10 @@ export default function DashboardPage() {
               <Card titulo="Total Planejado" valor={moeda(projetoAtual.total_planejado)} />
               <Card titulo="Total Executado (Saídas)" valor={moeda(projetoAtual.total_executado)} />
               <Card titulo="Total Entradas" valor={moeda(projetoAtual.total_entradas)} />
-              <Card titulo="Saldo (Planejado - Executado)" valor={moeda(projetoAtual.saldo_planejado)} />
+              <Card
+                titulo="Saldo (Planejado - Executado)"
+                valor={moeda(projetoAtual.saldo_planejado)}
+              />
             </section>
 
             {/* Ações */}
