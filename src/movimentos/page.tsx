@@ -17,6 +17,17 @@ type MovimentoRow = {
   status: string | null;
 };
 
+type MovimentoAnexo = {
+  id: string;
+  movimento_id: string;
+  created_at?: string | null;
+  nome?: string | null;
+  arquivo_nome?: string | null;
+  filename?: string | null;
+  url?: string | null;
+  path?: string | null;
+};
+
 type Projeto = { id: string; nome: string; ano_base: number };
 type Categoria = { id: string; nome: string };
 
@@ -29,6 +40,7 @@ export default function MovimentosPage() {
   const [rows, setRows] = useState<MovimentoRow[]>([]);
   const [projetos, setProjetos] = useState<Projeto[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [anexosCount, setAnexosCount] = useState<Record<string, number>>({});
 
   // filtros
   const [projetoId, setProjetoId] = useState<string>("");
@@ -40,6 +52,8 @@ export default function MovimentosPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Partial<MovimentoRow>>({});
   const [saving, setSaving] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editAnexos, setEditAnexos] = useState<MovimentoAnexo[]>([]);
 
   useEffect(() => {
     async function boot() {
@@ -47,7 +61,7 @@ export default function MovimentosPage() {
 
       const [{ data: prj }, { data: cat }] = await Promise.all([
         supabase.from("projetos").select("id,nome,ano_base").order("ano_base", { ascending: false }).order("nome"),
-        supabase.from("categorias_gasto").select("id,nome").order("nome"),
+        supabase.from("categorias_gasto").select("id,nome").eq("ativo", true).order("nome"),
       ]);
 
       setProjetos((prj ?? []) as any);
@@ -81,11 +95,36 @@ export default function MovimentosPage() {
     if (error) {
       console.error("Erro ao listar:", error);
       setRows([]);
+      setAnexosCount({});
       setLoading(false);
       return;
     }
 
-    setRows((data ?? []) as any);
+    const fetchedRows = (data ?? []) as MovimentoRow[];
+    setRows(fetchedRows);
+
+    const ids = fetchedRows.map((row) => row.id).filter(Boolean);
+    if (ids.length) {
+      const { data: anexosData, error: anexosError } = await supabase
+        .from("movimento_anexos")
+        .select("movimento_id")
+        .in("movimento_id", ids);
+
+      if (anexosError) {
+        console.error("Erro ao carregar anexos:", anexosError);
+        setAnexosCount({});
+      } else {
+        const counts = (anexosData ?? []).reduce<Record<string, number>>((acc, item: any) => {
+          const key = String(item.movimento_id);
+          acc[key] = (acc[key] ?? 0) + 1;
+          return acc;
+        }, {});
+        setAnexosCount(counts);
+      }
+    } else {
+      setAnexosCount({});
+    }
+
     setLoading(false);
   }
 
@@ -100,7 +139,7 @@ export default function MovimentosPage() {
     return { entradas, saidas, saldo: entradas - saidas };
   }, [rows]);
 
-  function startEdit(r: MovimentoRow) {
+  async function startEdit(r: MovimentoRow) {
     setEditingId(r.id);
     setDraft({
       id: r.id,
@@ -112,11 +151,52 @@ export default function MovimentosPage() {
       valor_total: r.valor_total ?? 0,
       status: r.status ?? "confirmado",
     });
+    setEditLoading(true);
+    setEditAnexos([]);
+
+    const [movimentoRes, anexosRes] = await Promise.all([
+      supabase
+        .from("movimentos_financeiros")
+        .select("id,tipo,data,projeto_id,categoria_gasto_id,descricao,valor_total,status")
+        .eq("id", r.id)
+        .single(),
+      supabase
+        .from("movimento_anexos")
+        .select("*")
+        .eq("movimento_id", r.id)
+        .order("created_at", { ascending: false }),
+    ]);
+
+    if (movimentoRes.error) {
+      console.error("Erro ao carregar detalhes do movimento:", movimentoRes.error);
+    } else if (movimentoRes.data) {
+      const movimento = movimentoRes.data as any;
+      setDraft({
+        id: movimento.id,
+        tipo: movimento.tipo,
+        data_movimento: movimento.data ? String(movimento.data).slice(0, 10) : r.data_movimento?.slice(0, 10),
+        projeto_id: movimento.projeto_id,
+        categoria_gasto_id: movimento.categoria_gasto_id ?? null,
+        descricao: movimento.descricao ?? "",
+        valor_total: movimento.valor_total ?? 0,
+        status: movimento.status ?? "confirmado",
+      });
+    }
+
+    if (anexosRes.error) {
+      console.error("Erro ao carregar anexos:", anexosRes.error);
+    } else {
+      setEditAnexos((anexosRes.data ?? []) as MovimentoAnexo[]);
+    }
+
+    setEditLoading(false);
   }
 
   function cancelEdit() {
     setEditingId(null);
     setDraft({});
+    setEditAnexos([]);
+    setEditLoading(false);
   }
 
   async function saveEdit() {
@@ -226,112 +306,129 @@ export default function MovimentosPage() {
               <div className="col-span-2">Data</div>
               <div className="col-span-1">Tipo</div>
               <div className="col-span-3">Categoria</div>
-              <div className="col-span-4">Descrição</div>
+              <div className="col-span-3">Descrição</div>
               <div className="col-span-1 text-right">Valor</div>
+              <div className="col-span-1 text-center">Anexo</div>
               <div className="col-span-1 text-right">Ações</div>
             </div>
 
             {rows.map((r) => {
               const isEdit = editingId === r.id;
+              const count = anexosCount[r.id] ?? 0;
               return (
-                <div key={r.id} className="grid grid-cols-12 gap-2 px-4 py-3 text-sm border-b border-white/10 last:border-b-0">
-                  <div className="col-span-2">
-                    {isEdit ? (
-                      <input
-                        type="date"
-                        value={(draft.data_movimento as string) ?? ""}
-                        onChange={(e) => setDraft(d => ({ ...d, data_movimento: e.target.value }))}
-                        className="w-full rounded-lg border border-white/15 bg-black/20 p-2 text-sm"
-                      />
-                    ) : (
-                      new Date(r.data_movimento).toLocaleDateString("pt-BR")
-                    )}
-                  </div>
+                <div key={r.id} className="border-b border-white/10 last:border-b-0">
+                  <div className="grid grid-cols-12 gap-2 px-4 py-3 text-sm">
+                    <div className="col-span-2">
+                      {isEdit ? (
+                        <input
+                          type="date"
+                          value={(draft.data_movimento as string) ?? ""}
+                          onChange={(e) => setDraft((d) => ({ ...d, data_movimento: e.target.value }))}
+                          className="w-full rounded-lg border border-white/15 bg-black/20 p-2 text-sm"
+                        />
+                      ) : (
+                        new Date(r.data_movimento).toLocaleDateString("pt-BR")
+                      )}
+                    </div>
 
-                  <div className="col-span-1">
-                    {isEdit ? (
-                      <select
-                        value={(draft.tipo as string) ?? "SAIDA"}
-                        onChange={(e) => setDraft(d => ({ ...d, tipo: e.target.value }))}
-                        className="w-full rounded-lg border border-white/15 bg-black/20 p-2 text-sm"
-                      >
-                        <option value="ENTRADA">ENTRADA</option>
-                        <option value="SAIDA">SAIDA</option>
-                      </select>
-                    ) : (
-                      r.tipo
-                    )}
-                  </div>
-
-                  <div className="col-span-3">
-                    {isEdit ? (
-                      <select
-                        value={(draft.categoria_gasto_id as string) ?? ""}
-                        onChange={(e) => setDraft(d => ({ ...d, categoria_gasto_id: e.target.value || null }))}
-                        className="w-full rounded-lg border border-white/15 bg-black/20 p-2 text-sm"
-                      >
-                        <option value="">(sem categoria)</option>
-                        {categorias.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-                      </select>
-                    ) : (
-                      r.categoria_nome ?? "—"
-                    )}
-                  </div>
-
-                  <div className="col-span-4">
-                    {isEdit ? (
-                      <input
-                        value={(draft.descricao as string) ?? ""}
-                        onChange={(e) => setDraft(d => ({ ...d, descricao: e.target.value }))}
-                        className="w-full rounded-lg border border-white/15 bg-black/20 p-2 text-sm"
-                        placeholder="Descrição do movimento"
-                      />
-                    ) : (
-                      r.descricao ?? "—"
-                    )}
-                  </div>
-
-                  <div className="col-span-1 text-right">
-                    {isEdit ? (
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={Number(draft.valor_total ?? 0)}
-                        onChange={(e) => setDraft(d => ({ ...d, valor_total: Number(e.target.value) }))}
-                        className="w-full rounded-lg border border-white/15 bg-black/20 p-2 text-sm text-right"
-                      />
-                    ) : (
-                      moeda(r.valor_total ?? 0)
-                    )}
-                  </div>
-
-                  <div className="col-span-1 flex justify-end gap-2">
-                    {!isEdit ? (
-                      <button
-                        onClick={() => startEdit(r)}
-                        className="rounded-lg border border-white/15 bg-white/5 px-3 py-1 font-semibold"
-                      >
-                        Editar
-                      </button>
-                    ) : (
-                      <>
-                        <button
-                          disabled={saving}
-                          onClick={saveEdit}
-                          className="rounded-lg border border-white/15 bg-emerald-400/20 px-3 py-1 font-semibold disabled:opacity-50"
+                    <div className="col-span-1">
+                      {isEdit ? (
+                        <select
+                          value={(draft.tipo as string) ?? "SAIDA"}
+                          onChange={(e) => setDraft((d) => ({ ...d, tipo: e.target.value }))}
+                          className="w-full rounded-lg border border-white/15 bg-black/20 p-2 text-sm"
                         >
-                          Salvar
-                        </button>
-                        <button
-                          disabled={saving}
-                          onClick={cancelEdit}
-                          className="rounded-lg border border-white/15 bg-white/5 px-3 py-1 font-semibold disabled:opacity-50"
+                          <option value="ENTRADA">ENTRADA</option>
+                          <option value="SAIDA">SAIDA</option>
+                        </select>
+                      ) : (
+                        r.tipo
+                      )}
+                    </div>
+
+                    <div className="col-span-3">
+                      {isEdit ? (
+                        <select
+                          value={(draft.categoria_gasto_id as string) ?? ""}
+                          onChange={(e) => setDraft((d) => ({ ...d, categoria_gasto_id: e.target.value || null }))}
+                          className="w-full rounded-lg border border-white/15 bg-black/20 p-2 text-sm"
                         >
-                          Cancelar
+                          <option value="">(sem categoria)</option>
+                          {categorias.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.nome}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        r.categoria_nome ?? "—"
+                      )}
+                    </div>
+
+                    <div className="col-span-3">
+                      {isEdit ? (
+                        <input
+                          value={(draft.descricao as string) ?? ""}
+                          onChange={(e) => setDraft((d) => ({ ...d, descricao: e.target.value }))}
+                          className="w-full rounded-lg border border-white/15 bg-black/20 p-2 text-sm"
+                          placeholder="Descrição do movimento"
+                        />
+                      ) : (
+                        r.descricao ?? "—"
+                      )}
+                    </div>
+
+                    <div className="col-span-1 text-right">
+                      {isEdit ? (
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={Number(draft.valor_total ?? 0)}
+                          onChange={(e) => setDraft((d) => ({ ...d, valor_total: Number(e.target.value) }))}
+                          className="w-full rounded-lg border border-white/15 bg-black/20 p-2 text-sm text-right"
+                        />
+                      ) : (
+                        moeda(r.valor_total ?? 0)
+                      )}
+                    </div>
+
+                    <div className="col-span-1 flex justify-center">
+                      <AnexoBadge count={count} />
+                    </div>
+
+                    <div className="col-span-1 flex justify-end gap-2">
+                      {!isEdit ? (
+                        <button
+                          onClick={() => startEdit(r)}
+                          className="rounded-lg border border-white/15 bg-white/5 px-3 py-1 font-semibold"
+                        >
+                          Editar
                         </button>
-                      </>
-                    )}
+                      ) : (
+                        <>
+                          <button
+                            disabled={saving}
+                            onClick={saveEdit}
+                            className="rounded-lg border border-white/15 bg-emerald-400/20 px-3 py-1 font-semibold disabled:opacity-50"
+                          >
+                            Salvar
+                          </button>
+                          <button
+                            disabled={saving}
+                            onClick={cancelEdit}
+                            className="rounded-lg border border-white/15 bg-white/5 px-3 py-1 font-semibold disabled:opacity-50"
+                          >
+                            Cancelar
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
+                  {isEdit && (
+                    <div className="px-4 pb-4 pt-1">
+                      <AnexosPanel loading={editLoading} anexos={editAnexos} />
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -353,6 +450,50 @@ function ResumoCard({ titulo, valor }: { titulo: string; valor: string }) {
     <div className="rounded-2xl border border-white/15 bg-white/5 p-4">
       <div className="text-xs opacity-80">{titulo}</div>
       <div className="mt-2 text-xl font-extrabold">{valor}</div>
+    </div>
+  );
+}
+
+function AnexoBadge({ count }: { count: number }) {
+  const has = count > 0;
+  return (
+    <span
+      className={`inline-flex h-3 w-3 rounded-full ${has ? "bg-emerald-400" : "bg-white/40"}`}
+      title={has ? `${count} anexo(s)` : "Sem anexo"}
+      aria-label={has ? "Com anexo" : "Sem anexo"}
+    />
+  );
+}
+
+function AnexosPanel({ loading, anexos }: { loading: boolean; anexos: MovimentoAnexo[] }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm">
+      <div className="mb-2 text-xs font-semibold uppercase tracking-wide opacity-70">Anexos</div>
+      {loading && <div className="text-xs opacity-70">Carregando anexos...</div>}
+      {!loading && anexos.length === 0 && <div className="text-xs opacity-70">Nenhum anexo encontrado.</div>}
+      {!loading && anexos.length > 0 && (
+        <ul className="grid gap-1 text-xs">
+          {anexos.map((anexo) => {
+            const label =
+              anexo.nome ??
+              anexo.arquivo_nome ??
+              anexo.filename ??
+              anexo.path ??
+              anexo.url ??
+              anexo.id;
+            return (
+              <li key={anexo.id} className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold">{label}</span>
+                {anexo.url && (
+                  <a className="text-emerald-200 underline" href={anexo.url} target="_blank" rel="noreferrer">
+                    Abrir
+                  </a>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }

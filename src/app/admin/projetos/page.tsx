@@ -59,8 +59,22 @@ export default function AdminProjetosPage() {
       supabase.from("linhas_programa").select("id,nome").order("nome", { ascending: true }),
     ]);
 
-    if (pRes.error) console.error("Erro projetos:", pRes.error);
-    if (lRes.error) console.error("Erro linhas_programa:", lRes.error);
+    if (pRes.error) {
+      console.error("Erro projetos:", {
+        message: pRes.error.message,
+        details: pRes.error.details,
+        hint: pRes.error.hint,
+        code: pRes.error.code,
+      });
+    }
+    if (lRes.error) {
+      console.error("Erro linhas_programa:", {
+        message: lRes.error.message,
+        details: lRes.error.details,
+        hint: lRes.error.hint,
+        code: lRes.error.code,
+      });
+    }
 
     setProjetos((pRes.data ?? []) as Projeto[]);
     setLinhas((lRes.data ?? []) as LinhaPrograma[]);
