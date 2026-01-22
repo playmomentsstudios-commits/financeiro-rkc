@@ -64,7 +64,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </header>
 
         <nav className="mt-4 flex flex-wrap gap-2">
-          <NavLink href="/admin" label="Visão geral" />
+          <NavLink href="/admin" label="Dashboard" />
           <NavLink href="/admin/projetos" label="Projetos" />
           <NavLink href="/admin/linhas-programa" label="Linhas" />
           <NavLink href="/admin/categorias" label="Categorias" />
@@ -72,7 +72,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <NavLink href="/admin/movimentos" label="Movimentos" />
           <NavLink href="/admin/anexos" label="Anexos" />
           <NavLink href="/admin/imports" label="Imports" />
-          <NavLink href="/admin/profiles" label="Profiles" />
+          <NavLink href="/admin/profiles" label="Perfis" />
         </nav>
 
         <section className="mt-6">{children}</section>
