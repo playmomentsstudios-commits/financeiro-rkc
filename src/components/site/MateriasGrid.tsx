@@ -16,27 +16,34 @@ export function MateriasGrid({ materias }: { materias: Materia[] }) {
   return (
     <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
       {destaque ? (
-        <article className="flex h-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/5">
-          <div className="aspect-[16/9] overflow-hidden">
+        <article className="group flex h-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/5 transition hover:-translate-y-1 hover:border-emerald-400/40 hover:bg-white/10">
+          <div className="relative aspect-[16/9] overflow-hidden">
             <img
               src={destaque.capa_url ?? "https://placehold.co/800x500/png"}
               alt={`Imagem da matéria ${destaque.titulo}`}
-              className="h-full w-full object-cover"
+              className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+            />
+            <div
+              className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent"
+              aria-hidden="true"
             />
           </div>
           <div className="flex flex-1 flex-col gap-3 p-6">
-            <p className="text-xs uppercase tracking-[0.2em] text-emerald-200">
-              {formatDate(destaque.publicado_em)}
-            </p>
+            <div className="flex flex-wrap items-center gap-3 text-xs uppercase tracking-[0.2em] text-emerald-200">
+              <span>Destaque</span>
+              <span className="h-1 w-1 rounded-full bg-emerald-200/70" aria-hidden />
+              <span>{formatDate(destaque.publicado_em)}</span>
+            </div>
             <h3 className="text-xl font-semibold text-white">{destaque.titulo}</h3>
             {destaque.resumo ? (
               <p className="text-sm text-white/70">{destaque.resumo}</p>
             ) : null}
             <Link
               href={`/materias/${destaque.slug}`}
-              className="mt-auto text-sm text-emerald-200 hover:text-emerald-100"
+              className="mt-auto inline-flex items-center gap-2 text-sm text-emerald-200 transition hover:text-emerald-100"
             >
-              Ler matéria →
+              Ler matéria
+              <span aria-hidden>→</span>
             </Link>
           </div>
         </article>
@@ -45,13 +52,17 @@ export function MateriasGrid({ materias }: { materias: Materia[] }) {
         {resto.map((materia) => (
           <article
             key={materia.id}
-            className="flex gap-4 rounded-2xl border border-white/10 bg-white/5 p-4"
+            className="group flex gap-4 rounded-2xl border border-white/10 bg-white/5 p-4 transition hover:-translate-y-0.5 hover:border-emerald-400/40 hover:bg-white/10"
           >
-            <div className="h-20 w-28 flex-shrink-0 overflow-hidden rounded-lg">
+            <div className="relative h-20 w-28 flex-shrink-0 overflow-hidden rounded-lg">
               <img
                 src={materia.capa_url ?? "https://placehold.co/240x160/png"}
                 alt={`Imagem da matéria ${materia.titulo}`}
-                className="h-full w-full object-cover"
+                className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+              />
+              <div
+                className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent"
+                aria-hidden="true"
               />
             </div>
             <div className="flex flex-1 flex-col gap-2">
@@ -64,9 +75,10 @@ export function MateriasGrid({ materias }: { materias: Materia[] }) {
               ) : null}
               <Link
                 href={`/materias/${materia.slug}`}
-                className="text-xs text-emerald-200 hover:text-emerald-100"
+                className="inline-flex items-center gap-1 text-xs text-emerald-200 transition hover:text-emerald-100"
               >
-                Ler matéria →
+                Ler matéria
+                <span aria-hidden>→</span>
               </Link>
             </div>
           </article>

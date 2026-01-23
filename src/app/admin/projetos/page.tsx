@@ -19,8 +19,9 @@ function moeda(v: number) {
   return (v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-function toNumber(x: any) {
-  const n = Number(x);
+function toNumber(v: string | number | null | undefined): number {
+  const cleaned = (v ?? "").toString().trim().replace(/\./g, "").replace(",", ".");
+  const n = cleaned === "" ? 0 : Number(cleaned);
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -274,8 +275,12 @@ export default function AdminProjetosPage() {
               <div className="sm:col-span-2">
                 <label className="text-xs opacity-80">Total planejado</label>
                 <input
+                  type="number"
+                  step="0.01"
                   value={String(form.total_planejado ?? 0)}
-                  onChange={(e) => setForm((s) => ({ ...s, total_planejado: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((s) => ({ ...s, total_planejado: toNumber(e.target.value) }))
+                  }
                   className="mt-1 w-full rounded-xl border border-white/15 bg-black/20 p-2.5"
                 />
               </div>
